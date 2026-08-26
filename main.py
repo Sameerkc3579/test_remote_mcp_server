@@ -1,11 +1,15 @@
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_access_token
 import os
-import aiosqlite  # Changed: sqlite3 → aiosqlite
-import tempfile
-# Use temporary directory which should be writable
-TEMP_DIR = tempfile.gettempdir()
-DB_PATH = os.path.join(TEMP_DIR, "expenses.db")
+import aiosqlite
+import subprocess
+import json
+from datetime import datetime
+
+# Use a data directory within the project
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "expenses.db")
 CATEGORIES_PATH = os.path.join(os.path.dirname(__file__), "categories.json")
 
 print(f"Database path: {DB_PATH}")
@@ -18,46 +22,59 @@ def get_current_user_id() -> str:
         return token.subject
     return "local_test_user"
 
-def init_db():  # Keep as sync for initialization
+def init_db():
     try:
-        # Use synchronous sqlite3 just for initialization
-        import sqlite3
-        # Wipe the database to recreate the schema with user_id
-        if os.path.exists(DB_PATH):
-            try:
-                os.remove(DB_PATH)
-            except Exception:
-                pass
-                
-        with sqlite3.connect(DB_PATH) as c:
-            c.execute("PRAGMA journal_mode=WAL")
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS expenses(
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    amount REAL NOT NULL,
-                    category TEXT NOT NULL,
-                    subcategory TEXT DEFAULT '',
-                    note TEXT DEFAULT ''
-                )
-            """)
-            # Test write access
-            c.execute("INSERT OR IGNORE INTO expenses(user_id, date, amount, category) VALUES ('test_user', '2000-01-01', 0, 'test')")
-            c.execute("DELETE FROM expenses WHERE category = 'test'")
-            print("Database initialized successfully with write access")
+        print("Running database migrations...")
+        subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=os.path.dirname(__file__))
+        print("Database initialized successfully")
     except Exception as e:
         print(f"Database initialization error: {e}")
-        raise
-
+        # Note: Do not raise here so the MCP server can still start if alembic fails
+        
 # Initialize database synchronously at module load
 init_db()
+
+def get_categories():
+    try:
+        with open(CATEGORIES_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {
+            "categories": [
+                "Food & Dining",
+                "Transportation",
+                "Shopping",
+                "Entertainment",
+                "Bills & Utilities",
+                "Healthcare",
+                "Travel",
+                "Education",
+                "Business",
+                "Other"
+            ]
+        }
+
+def validate_date(date_str: str):
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"Invalid date format: {date_str}. Expected YYYY-MM-DD")
+
+def validate_category(category: str):
+    cats = get_categories()
+    valid_categories = list(cats.keys())
+    if "categories" in valid_categories and isinstance(cats["categories"], list):
+        valid_categories = cats["categories"]
+    if category not in valid_categories:
+        raise ValueError(f"Invalid category: {category}. Valid options: {', '.join(valid_categories)}")
 
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):  # Changed: added async
     '''Add a new expense entry to the database.'''
     user_id = get_current_user_id()
     try:
+        validate_date(date)
+        validate_category(category)
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             cur = await c.execute(  # Changed: added await
                 "INSERT INTO expenses(user_id, date, amount, category, subcategory, note) VALUES (?,?,?,?,?,?)",
@@ -72,10 +89,12 @@ async def add_expense(date, amount, category, subcategory="", note=""):  # Chang
         return {"status": "error", "message": f"Database error: {str(e)}"}
     
 @mcp.tool()
-async def list_expenses(start_date, end_date):  # Changed: added async
-    '''List expense entries within an inclusive date range.'''
+async def list_expenses(start_date, end_date, limit: int = 50, offset: int = 0):
+    '''List expense entries within an inclusive date range. Use limit and offset for pagination.'''
     user_id = get_current_user_id()
     try:
+        validate_date(start_date)
+        validate_date(end_date)
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             cur = await c.execute(  # Changed: added await
                 """
@@ -83,8 +102,9 @@ async def list_expenses(start_date, end_date):  # Changed: added async
                 FROM expenses
                 WHERE user_id = ? AND date BETWEEN ? AND ?
                 ORDER BY date DESC, id DESC
+                LIMIT ? OFFSET ?
                 """,
-                (user_id, start_date, end_date)
+                (user_id, start_date, end_date, limit, offset)
             )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
@@ -96,6 +116,10 @@ async def summarize(start_date, end_date, category=None):  # Changed: added asyn
     '''Summarize expenses by category within an inclusive date range.'''
     user_id = get_current_user_id()
     try:
+        validate_date(start_date)
+        validate_date(end_date)
+        if category:
+            validate_category(category)
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             query = """
                 SELECT category, SUM(amount) AS total_amount, COUNT(*) as count
@@ -116,31 +140,66 @@ async def summarize(start_date, end_date, category=None):  # Changed: added asyn
     except Exception as e:
         return {"status": "error", "message": f"Error summarizing expenses: {str(e)}"}
 
+@mcp.tool()
+async def update_expense(expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
+    '''Update an existing expense entry.'''
+    user_id = get_current_user_id()
+    
+    updates = []
+    params = []
+    
+    if date is not None:
+        validate_date(date)
+        updates.append("date = ?")
+        params.append(date)
+    if amount is not None:
+        updates.append("amount = ?")
+        params.append(amount)
+    if category is not None:
+        validate_category(category)
+        updates.append("category = ?")
+        params.append(category)
+    if subcategory is not None:
+        updates.append("subcategory = ?")
+        params.append(subcategory)
+    if note is not None:
+        updates.append("note = ?")
+        params.append(note)
+        
+    if not updates:
+        return {"status": "error", "message": "No fields provided to update."}
+        
+    query = f"UPDATE expenses SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
+    params.extend([expense_id, user_id])
+    
+    try:
+        async with aiosqlite.connect(DB_PATH) as c:
+            cur = await c.execute(query, tuple(params))
+            if cur.rowcount == 0:
+                return {"status": "error", "message": "Expense not found or you do not have permission to update it."}
+            await c.commit()
+            return {"status": "success", "message": "Expense updated successfully"}
+    except Exception as e:
+        return {"status": "error", "message": f"Database error: {str(e)}"}
+
+@mcp.tool()
+async def delete_expense(expense_id: int):
+    '''Delete an existing expense entry.'''
+    user_id = get_current_user_id()
+    try:
+        async with aiosqlite.connect(DB_PATH) as c:
+            cur = await c.execute("DELETE FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+            if cur.rowcount == 0:
+                return {"status": "error", "message": "Expense not found or you do not have permission to delete it."}
+            await c.commit()
+            return {"status": "success", "message": "Expense deleted successfully"}
+    except Exception as e:
+        return {"status": "error", "message": f"Database error: {str(e)}"}
+
 @mcp.resource("expense:///categories", mime_type="application/json")  # Changed: expense:// → expense:///
 def categories():
     try:
-        # Provide default categories if file doesn't exist
-        default_categories = {
-            "categories": [
-                "Food & Dining",
-                "Transportation",
-                "Shopping",
-                "Entertainment",
-                "Bills & Utilities",
-                "Healthcare",
-                "Travel",
-                "Education",
-                "Business",
-                "Other"
-            ]
-        }
-        
-        try:
-            with open(CATEGORIES_PATH, "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError:
-            import json
-            return json.dumps(default_categories, indent=2)
+        return json.dumps(get_categories(), indent=2)
     except Exception as e:
         return f'{{"error": "Could not load categories: {str(e)}"}}'
 
