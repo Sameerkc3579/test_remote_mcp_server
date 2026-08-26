@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_access_token
 import os
 import aiosqlite  # Changed: sqlite3 → aiosqlite
 import tempfile
@@ -11,15 +12,29 @@ print(f"Database path: {DB_PATH}")
 
 mcp = FastMCP("ExpenseTracker")
 
+def get_current_user_id() -> str:
+    token = get_access_token()
+    if token and token.subject:
+        return token.subject
+    return "local_test_user"
+
 def init_db():  # Keep as sync for initialization
     try:
         # Use synchronous sqlite3 just for initialization
         import sqlite3
+        # Wipe the database to recreate the schema with user_id
+        if os.path.exists(DB_PATH):
+            try:
+                os.remove(DB_PATH)
+            except Exception:
+                pass
+                
         with sqlite3.connect(DB_PATH) as c:
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("""
                 CREATE TABLE IF NOT EXISTS expenses(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
                     date TEXT NOT NULL,
                     amount REAL NOT NULL,
                     category TEXT NOT NULL,
@@ -28,7 +43,7 @@ def init_db():  # Keep as sync for initialization
                 )
             """)
             # Test write access
-            c.execute("INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01', 0, 'test')")
+            c.execute("INSERT OR IGNORE INTO expenses(user_id, date, amount, category) VALUES ('test_user', '2000-01-01', 0, 'test')")
             c.execute("DELETE FROM expenses WHERE category = 'test'")
             print("Database initialized successfully with write access")
     except Exception as e:
@@ -41,11 +56,12 @@ init_db()
 @mcp.tool()
 async def add_expense(date, amount, category, subcategory="", note=""):  # Changed: added async
     '''Add a new expense entry to the database.'''
+    user_id = get_current_user_id()
     try:
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             cur = await c.execute(  # Changed: added await
-                "INSERT INTO expenses(date, amount, category, subcategory, note) VALUES (?,?,?,?,?)",
-                (date, amount, category, subcategory, note)
+                "INSERT INTO expenses(user_id, date, amount, category, subcategory, note) VALUES (?,?,?,?,?,?)",
+                (user_id, date, amount, category, subcategory, note)
             )
             expense_id = cur.lastrowid
             await c.commit()  # Changed: added await
@@ -58,16 +74,17 @@ async def add_expense(date, amount, category, subcategory="", note=""):  # Chang
 @mcp.tool()
 async def list_expenses(start_date, end_date):  # Changed: added async
     '''List expense entries within an inclusive date range.'''
+    user_id = get_current_user_id()
     try:
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             cur = await c.execute(  # Changed: added await
                 """
                 SELECT id, date, amount, category, subcategory, note
                 FROM expenses
-                WHERE date BETWEEN ? AND ?
+                WHERE user_id = ? AND date BETWEEN ? AND ?
                 ORDER BY date DESC, id DESC
                 """,
-                (start_date, end_date)
+                (user_id, start_date, end_date)
             )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
@@ -77,14 +94,15 @@ async def list_expenses(start_date, end_date):  # Changed: added async
 @mcp.tool()
 async def summarize(start_date, end_date, category=None):  # Changed: added async
     '''Summarize expenses by category within an inclusive date range.'''
+    user_id = get_current_user_id()
     try:
         async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
             query = """
                 SELECT category, SUM(amount) AS total_amount, COUNT(*) as count
                 FROM expenses
-                WHERE date BETWEEN ? AND ?
+                WHERE user_id = ? AND date BETWEEN ? AND ?
             """
-            params = [start_date, end_date]
+            params = [user_id, start_date, end_date]
 
             if category:
                 query += " AND category = ?"
