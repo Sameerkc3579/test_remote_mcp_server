@@ -53,6 +53,24 @@ async def get_redis():
     return redis_client
 
 def get_current_user_id() -> str:
+    # First, let's log all HTTP headers so we can see how FastMCP Cloud is sending your email!
+    try:
+        from fastmcp.server.dependencies import get_http_request
+        request = get_http_request()
+        
+        # Log the headers (excluding sensitive tokens)
+        safe_headers = {k: v for k, v in request.headers.items() if 'auth' not in k.lower()}
+        logger.info(f"Auth Debug - HTTP Headers: {safe_headers}", extra={"user_id": "system", "tool": "auth_debug", "status": "info"})
+        
+        # Check common identity headers
+        email = request.headers.get("x-fastmcp-email") or request.headers.get("x-forwarded-email") or request.headers.get("x-forwarded-user")
+        if email:
+            logger.info(f"Auth Debug - Found email in headers: {email}", extra={"user_id": "system", "tool": "auth_debug", "status": "info"})
+            return email
+            
+    except Exception as e:
+        logger.warning(f"Could not read HTTP headers: {e}", extra={"user_id": "system", "tool": "auth_debug", "status": "failed"})
+
     token = get_access_token()
     
     # Log the exact token structure to FastMCP Cloud logs for debugging
