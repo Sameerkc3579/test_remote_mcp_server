@@ -54,10 +54,23 @@ async def get_redis():
 
 def get_current_user_id() -> str:
     token = get_access_token()
-    if token and token.subject:
-        return token.subject
-    # Fallback to local_test_user for testing instead of raising an Exception
-    return "local_test_user"
+    
+    # Log the exact token structure to FastMCP Cloud logs for debugging
+    logger.info(f"Auth Debug - Token type: {type(token)}, value: {token}", extra={"user_id": "system", "tool": "auth_debug", "status": "info"})
+    
+    if token:
+        if hasattr(token, 'subject') and token.subject:
+            return str(token.subject)
+        if hasattr(token, 'user_id') and token.user_id:
+            return str(token.user_id)
+        if isinstance(token, dict) and "sub" in token:
+            return str(token["sub"])
+        if isinstance(token, str) and token.strip():
+            # If the token is just a string payload, we hash it or use it directly as the unique ID
+            return token.strip()
+            
+    # If we get here, the token is missing or empty. Do NOT fall back to a shared user, or data will leak!
+    raise Exception("Authentication required: No valid OAuth token found. Please sign in.")
 
 # --- Rate Limiting ---
 async def check_rate_limit(user_id: str, tool_name: str):
