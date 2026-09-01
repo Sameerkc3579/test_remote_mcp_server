@@ -59,6 +59,15 @@ def get_current_user_id() -> str:
     logger.info(f"Auth Debug - Token type: {type(token)}, value: {token}", extra={"user_id": "system", "tool": "auth_debug", "status": "info"})
     
     if token:
+        # FastMCP AccessToken object claims check
+        if hasattr(token, 'claims') and isinstance(token.claims, dict):
+            if 'sub' in token.claims:
+                return str(token.claims['sub'])
+            if 'user_id' in token.claims:
+                return str(token.claims['user_id'])
+            if 'email' in token.claims:
+                return str(token.claims['email'])
+
         if hasattr(token, 'subject') and token.subject:
             return str(token.subject)
         if hasattr(token, 'user_id') and token.user_id:
