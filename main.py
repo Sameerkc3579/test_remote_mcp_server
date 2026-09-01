@@ -70,6 +70,11 @@ def get_current_user_id() -> str:
         if api_key:
             return api_key.strip()
             
+        # 3. Check for API key in URL Query Parameters (best for Claude Web UI)
+        query_key = request.query_params.get("api_key")
+        if query_key:
+            return query_key.strip()
+            
     except Exception as e:
         logger.warning(f"Error extracting auth headers: {e}")
         
