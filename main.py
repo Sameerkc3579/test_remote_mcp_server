@@ -61,17 +61,17 @@ def get_current_user_id() -> str:
 
 # --- Rate Limiting ---
 async def check_rate_limit(user_id: str, tool_name: str):
-    r = await get_redis()
     key = f"rate_limit:{user_id}"
     try:
+        r = await get_redis()
         current = await r.incr(key)
         if current == 1:
             await r.expire(key, 60)
         if current > 30:
             raise Exception("Rate limit exceeded. Try again later.")
-    except redis.ConnectionError:
-        # Bypass rate limit gracefully if Redis goes down, but log the failure
-        logger.warning("Redis connection failed, bypassing rate limit", extra={"user_id": user_id, "tool": tool_name})
+    except Exception as e:
+        # Bypass rate limit gracefully if Redis goes down or is misconfigured
+        logger.warning(f"Redis error, bypassing rate limit: {e}", extra={"user_id": user_id, "tool": tool_name})
 
 # --- Validation ---
 def get_categories():
@@ -111,6 +111,13 @@ def validate_category(category: str):
     if category not in valid_categories:
         raise ValueError(f"Invalid category: {category}. Valid options: {', '.join(valid_categories)}")
 
+def validate_subcategory(category: str, subcategory: str):
+    cats = get_categories()
+    if category in cats and isinstance(cats[category], list):
+        valid_subcats = cats[category]
+        if subcategory not in valid_subcats:
+            raise ValueError(f"Invalid subcategory '{subcategory}' for category '{category}'. Valid options: {', '.join(valid_subcats)}")
+
 def validate_amount(amount: float):
     if amount <= 0:
         raise ValueError("Amount must be greater than 0.")
@@ -138,7 +145,7 @@ def log_error(user_id, tool_name, e):
     return {"status": "error", "message": str(e), "error_type": error_type}
 
 @mcp.tool()
-async def add_expense(date: str, amount: float, category: str, subcategory: str = "", note: str = ""):
+async def add_expense(date: str, amount: float, category: str, subcategory: str, note: str = ""):
     '''Add a new expense entry to the database.'''
     try:
         user_id = get_current_user_id()
@@ -147,6 +154,7 @@ async def add_expense(date: str, amount: float, category: str, subcategory: str 
         
         validate_date(date)
         validate_category(category)
+        validate_subcategory(category, subcategory)
         validate_amount(amount)
         
         pool = await get_pool()
