@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column('amount', sa.Float(), nullable=False),
         sa.Column('category', sa.String(), nullable=False),
         sa.Column('subcategory', sa.String(), server_default=''),
-        sa.Column('note', sa.String(), server_default='')
+        sa.Column('note', sa.String(), server_default=''),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False)
     )
 
 def downgrade() -> None:
