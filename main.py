@@ -52,7 +52,7 @@ async def get_redis():
         redis_client = redis.from_url(REDIS_URL)
     return redis_client
 
-def get_current_user_id() -> str:
+def get_current_user_id(provided_email: str = None) -> str:
     token = get_access_token()
     
     # Log the exact token structure to FastMCP Cloud logs for debugging
@@ -78,6 +78,9 @@ def get_current_user_id() -> str:
             # If the token is just a string payload, we hash it or use it directly as the unique ID
             return token.strip()
             
+    if provided_email:
+        return provided_email
+
     # WARNING: Another AI agent keeps changing this to `raise Exception`, which completely breaks 
     # the server for the user because they don't have OAuth configured yet on FastMCP Cloud!
     # DO NOT remove this fallback until the user explicitly says they have configured Auth0/Cognito!
@@ -169,10 +172,10 @@ def log_error(user_id, tool_name, e):
     return {"status": "error", "message": str(e), "error_type": error_type}
 
 @mcp.tool()
-async def add_expense(date: str, amount: float, category: str, subcategory: str, note: str = ""):
-    '''Add a new expense entry to the database.'''
+async def add_expense(user_email: str, date: str, amount: float, category: str, subcategory: str, note: str = ""):
+    '''Add a new expense entry to the database. Provide your email as user_email to identify your expenses.'''
     try:
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(user_email)
         log_attempt(user_id, "add_expense")
         await check_rate_limit(user_id, "add_expense")
         
@@ -197,10 +200,10 @@ async def add_expense(date: str, amount: float, category: str, subcategory: str,
         return log_error(locals().get("user_id", "unknown"), "add_expense", e)
 
 @mcp.tool()
-async def list_expenses(start_date: str, end_date: str, limit: int = 50, offset: int = 0):
-    '''List expense entries within an inclusive date range. Use limit and offset for pagination.'''
+async def list_expenses(user_email: str, start_date: str, end_date: str, limit: int = 50, offset: int = 0):
+    '''List expense entries within an inclusive date range. Provide your email as user_email to identify your expenses. Use limit and offset for pagination.'''
     try:
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(user_email)
         log_attempt(user_id, "list_expenses")
         
         validate_date(start_date)
@@ -224,10 +227,10 @@ async def list_expenses(start_date: str, end_date: str, limit: int = 50, offset:
         return log_error(locals().get("user_id", "unknown"), "list_expenses", e)
 
 @mcp.tool()
-async def summarize(start_date: str, end_date: str, category: str = None):
-    '''Summarize expenses by category within an inclusive date range.'''
+async def summarize(user_email: str, start_date: str, end_date: str, category: str = None):
+    '''Summarize expenses by category within an inclusive date range. Provide your email as user_email to identify your expenses.'''
     try:
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(user_email)
         log_attempt(user_id, "summarize")
         
         validate_date(start_date)
@@ -260,10 +263,10 @@ async def summarize(start_date: str, end_date: str, category: str = None):
         return log_error(locals().get("user_id", "unknown"), "summarize", e)
 
 @mcp.tool()
-async def update_expense(expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
-    '''Update an existing expense entry.'''
+async def update_expense(user_email: str, expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
+    '''Update an existing expense entry. Provide your email as user_email to identify your expenses.'''
     try:
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(user_email)
         log_attempt(user_id, "update_expense")
         await check_rate_limit(user_id, "update_expense")
         
@@ -316,10 +319,10 @@ async def update_expense(expense_id: int, amount: float = None, category: str = 
         return log_error(locals().get("user_id", "unknown"), "update_expense", e)
 
 @mcp.tool()
-async def delete_expense(expense_id: int):
-    '''Delete an existing expense entry.'''
+async def delete_expense(user_email: str, expense_id: int):
+    '''Delete an existing expense entry. Provide your email as user_email to identify your expenses.'''
     try:
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(user_email)
         log_attempt(user_id, "delete_expense")
         await check_rate_limit(user_id, "delete_expense")
         
