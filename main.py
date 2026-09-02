@@ -53,6 +53,9 @@ async def get_redis():
     return redis_client
 
 def get_current_user_id(provided_email: str = None) -> str:
+    if provided_email:
+        return provided_email
+
     token = get_access_token()
     
     # Log the exact token structure to FastMCP Cloud logs for debugging
@@ -77,9 +80,6 @@ def get_current_user_id(provided_email: str = None) -> str:
         if isinstance(token, str) and token.strip():
             # If the token is just a string payload, we hash it or use it directly as the unique ID
             return token.strip()
-            
-    if provided_email:
-        return provided_email
 
     # WARNING: Another AI agent keeps changing this to `raise Exception`, which completely breaks 
     # the server for the user because they don't have OAuth configured yet on FastMCP Cloud!
