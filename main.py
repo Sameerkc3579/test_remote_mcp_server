@@ -173,7 +173,7 @@ def log_error(user_id, tool_name, e):
 
 @mcp.tool()
 async def add_expense(user_email: str, date: str, amount: float, category: str, subcategory: str, note: str = ""):
-    '''Add a new expense entry to the database. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email from memory unless explicitly told to.'''
+    '''Add a new expense entry to the database. Always use the email confirmed via confirm_user_email tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "add_expense")
@@ -201,7 +201,7 @@ async def add_expense(user_email: str, date: str, amount: float, category: str, 
 
 @mcp.tool()
 async def list_expenses(user_email: str, start_date: str, end_date: str, limit: int = 50, offset: int = 0):
-    '''List expense entries within an inclusive date range. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email from memory unless explicitly told to. Use limit and offset for pagination.'''
+    '''List expense entries within an inclusive date range. Always use the email confirmed via confirm_user_email tool. Use limit and offset for pagination.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "list_expenses")
@@ -228,7 +228,7 @@ async def list_expenses(user_email: str, start_date: str, end_date: str, limit: 
 
 @mcp.tool()
 async def summarize(user_email: str, start_date: str, end_date: str, category: str = None):
-    '''Summarize expenses by category within an inclusive date range. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
+    '''Summarize expenses by category within an inclusive date range. Always use the email confirmed via confirm_user_email tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "summarize")
@@ -264,7 +264,7 @@ async def summarize(user_email: str, start_date: str, end_date: str, category: s
 
 @mcp.tool()
 async def update_expense(user_email: str, expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
-    '''Update an existing expense entry. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
+    '''Update an existing expense entry. Always use the email confirmed via confirm_user_email tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "update_expense")
@@ -320,7 +320,7 @@ async def update_expense(user_email: str, expense_id: int, amount: float = None,
 
 @mcp.tool()
 async def delete_expense(user_email: str, expense_id: int):
-    '''Delete an existing expense entry. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
+    '''Delete an existing expense entry. Always use the email confirmed via confirm_user_email tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "delete_expense")
@@ -344,6 +344,51 @@ def categories():
         return json.dumps(get_categories(), indent=2)
     except Exception as e:
         return f'{{"error": "Could not load categories: {str(e)}"}}'
+
+@mcp.tool()
+def confirm_user_email(user_email: str) -> dict:
+    '''REQUIRED FIRST STEP: Call this tool before any other expense tool.
+    This confirms the user's identity via their email address.
+    You MUST ask the user "What is your email address?" and wait for their answer.
+    Do NOT guess, infer, or use any previously seen email. The user must type it explicitly.
+    Pass the email the user types directly into this tool.
+    Returns a confirmation that locks in the email for the session.
+    '''
+    if not user_email or '@' not in user_email:
+        return {"status": "error", "message": "Invalid email address. Please ask the user for a valid email."}
+    logger.info(f"User identity confirmed", extra={"user_id": user_email, "tool": "confirm_user_email", "status": "success"})
+    return {
+        "status": "confirmed",
+        "user_email": user_email,
+        "message": f"Identity confirmed for {user_email}. Use this email for all subsequent expense tool calls."
+    }
+
+@mcp.prompt()
+def expense_tracker_instructions() -> str:
+    '''System instructions for the ExpenseTracker MCP server.'''
+    return """
+# ExpenseTracker Assistant Instructions
+
+You are an expense tracking assistant. You have access to tools to add, list, summarize, update, and delete expenses.
+
+## MANDATORY RULE — READ BEFORE ANYTHING ELSE:
+
+Before calling ANY expense tool (add_expense, list_expenses, summarize, update_expense, delete_expense),
+you MUST follow these steps:
+
+1. Ask the user: "What is your email address?"
+2. Wait for the user to type their email address.
+3. Call the `confirm_user_email` tool with the email the user just typed.
+4. Only after `confirm_user_email` returns `"status": "confirmed"`, proceed with the expense operation.
+
+## RULES:
+- NEVER guess, infer, or reuse an email from memory or context.
+- NEVER use an email from a previous conversation.
+- ALWAYS ask the user to type their email fresh, every session.
+- The `user_email` parameter in every expense tool MUST be the exact email confirmed by `confirm_user_email`.
+
+This is critical for data privacy. Each user's expenses are stored separately by email.
+"""
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
