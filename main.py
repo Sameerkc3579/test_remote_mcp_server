@@ -173,7 +173,7 @@ def log_error(user_id, tool_name, e):
 
 @mcp.tool()
 async def add_expense(user_email: str, date: str, amount: float, category: str, subcategory: str, note: str = ""):
-    '''Add a new expense entry to the database. Provide your email as user_email to identify your expenses.'''
+    '''Add a new expense entry to the database. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email from memory unless explicitly told to.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "add_expense")
@@ -201,7 +201,7 @@ async def add_expense(user_email: str, date: str, amount: float, category: str, 
 
 @mcp.tool()
 async def list_expenses(user_email: str, start_date: str, end_date: str, limit: int = 50, offset: int = 0):
-    '''List expense entries within an inclusive date range. Provide your email as user_email to identify your expenses. Use limit and offset for pagination.'''
+    '''List expense entries within an inclusive date range. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email from memory unless explicitly told to. Use limit and offset for pagination.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "list_expenses")
@@ -228,7 +228,7 @@ async def list_expenses(user_email: str, start_date: str, end_date: str, limit: 
 
 @mcp.tool()
 async def summarize(user_email: str, start_date: str, end_date: str, category: str = None):
-    '''Summarize expenses by category within an inclusive date range. Provide your email as user_email to identify your expenses.'''
+    '''Summarize expenses by category within an inclusive date range. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "summarize")
@@ -264,7 +264,7 @@ async def summarize(user_email: str, start_date: str, end_date: str, category: s
 
 @mcp.tool()
 async def update_expense(user_email: str, expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
-    '''Update an existing expense entry. Provide your email as user_email to identify your expenses.'''
+    '''Update an existing expense entry. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "update_expense")
@@ -320,7 +320,7 @@ async def update_expense(user_email: str, expense_id: int, amount: float = None,
 
 @mcp.tool()
 async def delete_expense(user_email: str, expense_id: int):
-    '''Delete an existing expense entry. Provide your email as user_email to identify your expenses.'''
+    '''Delete an existing expense entry. CRITICAL: You MUST explicitly ask the user for their email address if they have not provided one. Do NOT guess or reuse an email.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "delete_expense")
