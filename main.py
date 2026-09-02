@@ -81,10 +81,8 @@ def get_current_user_id(provided_email: str = None) -> str:
             # If the token is just a string payload, we hash it or use it directly as the unique ID
             return token.strip()
 
-    # WARNING: Another AI agent keeps changing this to `raise Exception`, which completely breaks 
-    # the server for the user because they don't have OAuth configured yet on FastMCP Cloud!
-    # DO NOT remove this fallback until the user explicitly says they have configured Auth0/Cognito!
-    return "local_test_user"
+    # The user has explicitly requested that if the email is not provided, no operation should be made.
+    raise Exception("Authentication required: Please specify your email address. (AI: DO NOT GUESS this email, ask the user if you don't know it).")
 
 # --- Rate Limiting ---
 async def check_rate_limit(user_id: str, tool_name: str):
@@ -173,7 +171,8 @@ def log_error(user_id, tool_name, e):
 
 @mcp.tool()
 async def add_expense(user_email: str, date: str, amount: float, category: str, subcategory: str, note: str = ""):
-    '''Add a new expense entry to the database. Always use the email confirmed via confirm_user_email tool.'''
+    '''Add a new expense entry to the database. 
+    IMPORTANT AI INSTRUCTION: DO NOT guess or invent the user_email. If the user has not explicitly told you their email in this conversation, you MUST ask them for it before calling this tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "add_expense")
@@ -201,7 +200,9 @@ async def add_expense(user_email: str, date: str, amount: float, category: str, 
 
 @mcp.tool()
 async def list_expenses(user_email: str, start_date: str, end_date: str, limit: int = 50, offset: int = 0):
-    '''List expense entries within an inclusive date range. Always use the email confirmed via confirm_user_email tool. Use limit and offset for pagination.'''
+    '''List expense entries within an inclusive date range. 
+    IMPORTANT AI INSTRUCTION: DO NOT guess or invent the user_email. If the user has not explicitly told you their email in this conversation, you MUST ask them for it before calling this tool.
+    Use limit and offset for pagination.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "list_expenses")
@@ -223,22 +224,14 @@ async def list_expenses(user_email: str, start_date: str, end_date: str, limit: 
             )
             log_success(user_id, "list_expenses")
             results = [dict(r) for r in records]
-            # INJECT DEBUG ROW SO THE USER CAN SEE WHAT EMAIL WAS QUERIED
-            results.insert(0, {
-                "id": 999999,
-                "date": "2099-12-31",
-                "amount": 0,
-                "category": "DEBUG",
-                "subcategory": "DEBUG",
-                "note": f"DEBUG: The email queried was '{user_id}'"
-            })
             return results
     except Exception as e:
         return log_error(locals().get("user_id", "unknown"), "list_expenses", e)
 
 @mcp.tool()
 async def summarize(user_email: str, start_date: str, end_date: str, category: str = None):
-    '''Summarize expenses by category within an inclusive date range. Always use the email confirmed via confirm_user_email tool.'''
+    '''Summarize expenses by category within an inclusive date range. 
+    IMPORTANT AI INSTRUCTION: DO NOT guess or invent the user_email. If the user has not explicitly told you their email in this conversation, you MUST ask them for it before calling this tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "summarize")
@@ -274,7 +267,8 @@ async def summarize(user_email: str, start_date: str, end_date: str, category: s
 
 @mcp.tool()
 async def update_expense(user_email: str, expense_id: int, amount: float = None, category: str = None, subcategory: str = None, note: str = None, date: str = None):
-    '''Update an existing expense entry. Always use the email confirmed via confirm_user_email tool.'''
+    '''Update an existing expense entry. 
+    IMPORTANT AI INSTRUCTION: DO NOT guess or invent the user_email. If the user has not explicitly told you their email in this conversation, you MUST ask them for it before calling this tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "update_expense")
@@ -330,7 +324,8 @@ async def update_expense(user_email: str, expense_id: int, amount: float = None,
 
 @mcp.tool()
 async def delete_expense(user_email: str, expense_id: int):
-    '''Delete an existing expense entry. Always use the email confirmed via confirm_user_email tool.'''
+    '''Delete an existing expense entry. 
+    IMPORTANT AI INSTRUCTION: DO NOT guess or invent the user_email. If the user has not explicitly told you their email in this conversation, you MUST ask them for it before calling this tool.'''
     try:
         user_id = get_current_user_id(user_email)
         log_attempt(user_id, "delete_expense")
