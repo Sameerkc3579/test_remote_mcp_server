@@ -222,7 +222,17 @@ async def list_expenses(user_email: str, start_date: str, end_date: str, limit: 
                 user_id, start_date, end_date, limit, offset
             )
             log_success(user_id, "list_expenses")
-            return [dict(r) for r in records]
+            results = [dict(r) for r in records]
+            # INJECT DEBUG ROW SO THE USER CAN SEE WHAT EMAIL WAS QUERIED
+            results.insert(0, {
+                "id": 999999,
+                "date": "2099-12-31",
+                "amount": 0,
+                "category": "DEBUG",
+                "subcategory": "DEBUG",
+                "note": f"DEBUG: The email queried was '{user_id}'"
+            })
+            return results
     except Exception as e:
         return log_error(locals().get("user_id", "unknown"), "list_expenses", e)
 

@@ -1,0 +1,3 @@
+[09/02/26 08:42:46] INFO     Starting MCP server               transport.py:241
+                             'ExpenseTracker' with transport                   
+                             'stdio'                                           
